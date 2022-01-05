@@ -12,12 +12,15 @@ class YoutubeSpider(scrapy.Spider):
     name = 'Youtube'
     allowed_domains = ['youtube.com', 'googleapis.com']
 
-    def __init__(self, channel_ids='', from_date='', to_date='', **kwargs):
+    def __init__(self, channel_ids='', keywords='', from_date='', to_date='', **kwargs):
         super().__init__(**kwargs)
         self.ids = []
         for id in channel_ids.split(','):
             if id != '' :
                 self.ids.append({'type':'channel_id', 'id': id})
+        for keyword in keywords.split(','):
+            if keyword != '' :
+                self.ids.append({'type':'keyword', 'id': keyword})
         
         self.date_filter = False
         if (from_date == '') ^ (to_date == ''):
@@ -32,17 +35,28 @@ class YoutubeSpider(scrapy.Spider):
         for id in self.ids :
             query = {
                 'key': YT_APIKEY,
-                'part': 'snippet',
-                'id': id['id']
+                'part': 'snippet'
             }
             #Channel ID
             if id['type'] == 'channel_id' :
                 query['part'] = 'snippet, statistics'
+                query['id'] = id['id']
                 query_str = parse.urlencode(query)
                 yield scrapy.Request(
                         f'{YT_API_LINK}channels?{query_str}', 
                         self.get_meta_channel,
                         meta={'type': 'Channel','id': id['id']}
+                    )
+            #Keyword
+            if id['type'] == 'keyword' :
+                query['part'] = 'snippet, id'
+                query['type'] = 'video'
+                query['q'] = id['id']
+                query_str = parse.urlencode(query)
+                yield scrapy.Request(
+                        f'{YT_API_LINK}search?{query_str}', 
+                        self.get_search_result,
+                        meta={'id': id['id']}
                     )
 
     def get_meta_channel(self, response) :
@@ -65,7 +79,7 @@ class YoutubeSpider(scrapy.Spider):
         query_str = parse.urlencode(query)
         yield scrapy.Request(
                 f'{YT_API_LINK}search?{query_str}',
-                self.get_channel_videos,
+                self.get_search_result,
                 meta={'Channel':doc}
             )
     
@@ -107,7 +121,7 @@ class YoutubeSpider(scrapy.Spider):
             query_str = parse.urlencode(query)
             yield scrapy.Request(f'{YT_API_LINK}commentThreads?{query_str}', self.parse_video, meta=meta)
 
-    def get_channel_videos(self, response):
+    def get_search_result(self, response):
         data = json.loads(response.body)
         for video in data['items'] :
             query = {
@@ -128,7 +142,7 @@ class YoutubeSpider(scrapy.Spider):
             query_str = parse.urlencode(parsed_query)
             yield scrapy.Request(
                     f'{YT_API_LINK}search?{query_str}', 
-                    self.get_channel_videos,
+                    self.get_search_result,
                     meta=response.meta
                 )
 
@@ -143,16 +157,16 @@ class YoutubeSpider(scrapy.Spider):
             doc['datetime']  = top_comment['snippet']['publishedAt']
             doc['like']      = top_comment['snippet']['likeCount']
             yield doc
-            if comment['snippet']['totalReplyCount'] > 0 :
-                for repl in comment['replies']['comments'] :
-                    doc = YoutubeCommentItem()
-                    doc['commentId'] = repl['id']
-                    doc['videoId']   = repl['snippet']['videoId']
-                    doc['body']      = repl['snippet']['textDisplay']
-                    doc['datetime']  = repl['snippet']['publishedAt']
-                    doc['like']      = repl['snippet']['likeCount']
-                    yield doc
-        # Date의 문제, 대댓글에 필터를 걸기가 힘듬
+            # if comment['snippet']['totalReplyCount'] > 0 :
+            #     for repl in comment['replies']['comments'] :
+            #         doc = YoutubeCommentItem()
+            #         doc['commentId'] = repl['id']
+            #         doc['videoId']   = repl['snippet']['videoId']
+            #         doc['body']      = repl['snippet']['textDisplay']
+            #         doc['datetime']  = repl['snippet']['publishedAt']
+            #         doc['like']      = repl['snippet']['likeCount']
+            #         yield doc
+        
         if 'nextPageToken' in data :
             parsed_query = dict(parse.parse_qsl(response.url[response.url.find('?') + 1:]))
             parsed_query['pageToken'] = data['nextPageToken']
