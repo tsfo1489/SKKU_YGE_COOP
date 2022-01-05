@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+        mariadb:
+                image: mariadb:10.7.1
+                container_name: mariadb
+                restart: always
+                volumes:
+                        - ./db/data/maria:/var/lib/mysql
+                environment:
+                        - MYSQL_HOST=ygenter
+                        - MYSQL_PORT=3306
+                        - MYSQL_ROOT_PASSWORD=ygenter
+                        - MYSQL_DATABASE=ygenter2
+                        - MYSQL_USER=ygenter
+                        - MYSQL_PASSWORD=ygenter
+        
+        mongodb:
+                image: mongo:5.0.5
+                container_name: mongodb
+                restart: always
+                volumes:
+                        - ./db/data/mongo:/data/db
+                environment:
+                        - MONGO_INITDB_ROOT_USERNAME=ygenter
+                        - MONGO_INITDB_ROOT_PASSWORD=ygenter
+                        - MONGO_INITDB_DATABASE=ygenter
+                ports: 
+                        - 27017:27017
+
+        tf-django:
+                image: tf-django
+                container_name: tf-django
+                restart: always
+                depends_on:
+                        - db_maria
+                        - db_mongo          
+                ports:
+                        - "0.0.0.0:80:8000"
