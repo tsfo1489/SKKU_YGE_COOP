@@ -8,7 +8,8 @@ from ..items import *
 from ..apikey import NAVER_ID, NAVER_SECRET
 
 NAVER_API_LINK = 'https://openapi.naver.com/v1/search/'
-NAVER_NEWS_LINK = 'https://entertain.naver.com/read?'
+NAVER_NEWS_LINK = 'https://entertain.naver.com/read'
+NAVER_REACTION_LINK = 'https://news.like.naver.com/v1/search/contents'
 
 class NewsAPISpider(scrapy.Spider):
     name = 'NewsAPI'
@@ -53,7 +54,7 @@ class NewsAPISpider(scrapy.Spider):
             flag, link = self.url_checker(item['link'])
             if flag:
                 yield scrapy.Request(
-                    f'{NAVER_NEWS_LINK}oid={link[0]}&aid={link[1]}',
+                    f'{NAVER_NEWS_LINK}?oid={link[0]}&aid={link[1]}',
                     self.parse_news_article,
                     meta={
                         'keyword': response.meta['keyword'],
@@ -76,7 +77,7 @@ class NewsAPISpider(scrapy.Spider):
                     'start':response.meta['start'] + 100
                 }
             )
-
+    
     def parse_news_article(self, response):
         soup = bs(response.body, 'html.parser')
         if 'entertain' in response.url:
@@ -94,13 +95,38 @@ class NewsAPISpider(scrapy.Spider):
         reporter = soup.select_one('.journalistcard_summary_name')
         if reporter is not None:
             reporter = reporter.text.replace('기자', '').strip()
-        pub_time = datetime.strptime(response.meta['pubDate'], '%a, %d %b %Y %H:%M:%S %z')
-        yield NewsItem(
+        else: 
+            reporter = re.search('[^가-힣][가-힣]{2,4} 기자[^가-힣]', body)
+            if reporter is not None:
+                reporter = reporter[0][1:-4]
+        pub_date = soup.select_one('div.article_info > span > em').text.strip()
+        pub_date = self.korean_date_to_iso8601(pub_date)
+        item = NewsItem(
             press=press,
             reporter=reporter,
             title=title,
             body=body,
             url=response.url,
             keyword=response.meta['keyword'],
-            datetime=pub_time
+            datetime=pub_date
         )
+        data_cid = soup.select_one('._reactionModule')['data-cid']
+        query = {
+            'callback': 'A',
+            'q': f'ENTERTAIN[{data_cid}]'
+        }
+        query_str = parse.urlencode(query)
+        yield scrapy.Request(
+            f'{NAVER_REACTION_LINK}?{query_str}',
+            self.get_article_reaction,
+            meta={'item': item}
+        )
+    
+    def get_article_reaction(self, response):
+        data = json.loads(response.body[6:-2])
+        reactions = {}
+        for reaction in data['contents'][0]['reactions']:
+            reactions[reaction['reactionType']] = reaction['count']
+        item = response.meta['item']
+        item['reaction'] = reactions
+        yield item
