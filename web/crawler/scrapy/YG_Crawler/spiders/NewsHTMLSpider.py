@@ -120,14 +120,16 @@ class NewsHTMLSpider(scrapy.Spider):
                 reporter = reporter[0][1:-4]
         pub_date = soup.select_one('div.article_info > span > em').text.strip()
         pub_date = self.korean_date_to_iso8601(pub_date)
+        _, (oid, aid) = self.url_checker(response.url)
         item = NewsItem(
+            data_id=f'{oid}_{aid}',
             press=press,
             reporter=reporter,
             title=title,
             body=body,
             url=response.url,
             keyword=response.meta['keyword'],
-            datetime=pub_date
+            create_dt=pub_date
         )
         data_cid = soup.select_one('._reactionModule')['data-cid']
         query = {
