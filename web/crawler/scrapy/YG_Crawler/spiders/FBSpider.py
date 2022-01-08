@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.remote_connection import LOGGER
 from ..apikey import CHROMEDRIVER_PATH, CROWDTANGLE_EMAIL, CROWDTANGLE_PASSWORD, CROWDTANGLE_FB_LINK
-from ..items import IGItem
+from ..items import FBItem
 
 class FBSpider(scrapy.Spider):
     name = 'Facebook'
@@ -79,9 +79,10 @@ class FBSpider(scrapy.Spider):
 
     def __init__(self, **kwargs):
         options = webdriver.ChromeOptions()
-        options.add_argument('window-size=1920,1080')
+        options.add_argument('window-size=1280,720')
         options.add_argument('loglevel=3')
-        # options.add_argument('headless')
+        options.add_argument('headless')
+        options.add_argument('no-sandbox')
         options.add_experimental_option("excludeSwitches", ["enable-logging"])
         self.driver = webdriver.Chrome(CHROMEDRIVER_PATH, options=options)
         self.driver.implicitly_wait(3)
@@ -92,8 +93,9 @@ class FBSpider(scrapy.Spider):
                 self.cookie = {
                     'cisession': cookie['value']
                 }
+        self.channel_ids = {}
         self.check_artist_channel()
-        print(self.channel_ids)
+        self.keyword_ids = {}
         # self.check_keyword()
     
     def crowdtangle_login(self):
@@ -133,7 +135,6 @@ class FBSpider(scrapy.Spider):
                         ))
                     )
                     self.driver.find_element_by_css_selector('img[alt="FB pages icon"]').click()
-                    print(now_url)
                     try:
                         WebDriverWait(self.driver, 10).until(EC.url_changes(now_url))
                         break
@@ -174,7 +175,6 @@ class FBSpider(scrapy.Spider):
                         tag.find_element_by_css_selector('button').click()
                         break
         soup = bs(self.driver.page_source, 'html.parser')
-        self.channel_ids = {}
         for tag in soup.select('.list-item-group a'):
             self.channel_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
         
@@ -208,14 +208,13 @@ class FBSpider(scrapy.Spider):
                     ))
                 )
         soup = bs(self.driver.page_source, 'html.parser')
-        self.keyword_ids = {}
         for tag in soup.select('.rc-collapse-content-active .list-item-group a'):
             self.keyword_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
     
     def start_requests(self):
         for keyword in self.keyword_ids:
             yield scrapy.Request(
-                f'{CROWDTANGLE_FB_LINK}/{self.keyword_ids[keyword]}/stream/popular/0/1/0/0/0/0/1day/raw/0/8',
+                f'{CROWDTANGLE_FB_LINK}/{self.keyword_ids[keyword]}/stream/popular/0/1/0/0/0/0/1day/raw/0/2,3',
                 self.parse_post,
                 meta={
                     'by': 'keyword', 'keyword': keyword, 
@@ -226,7 +225,7 @@ class FBSpider(scrapy.Spider):
             )
         for channel in self.channel_ids:
             yield scrapy.Request(
-                f'{CROWDTANGLE_FB_LINK}/{self.channel_ids[channel]}/stream/popular/0/1/0/0/0/0/1day/raw/0/8',
+                f'{CROWDTANGLE_FB_LINK}/{self.channel_ids[channel]}/stream/popular/0/1/0/0/0/0/1day/raw/0/2,3',
                 self.parse_post,
                 meta={
                     'by': 'channel', 'channel': f'{channel}', 
@@ -239,18 +238,36 @@ class FBSpider(scrapy.Spider):
     def parse_post(self, response):
         soup = bs(response.body, 'html.parser')
         crawled_item_cnt = response.meta['crawled_item_cnt']
-        limit = min(self.post_per_day- crawled_item_cnt, len(soup.select('li.feed_item')))
-        for post in soup.select('li.feed_item')[:limit]:
-            channel_name = post.select_one('h3.post_group_name a').text.strip()
-            post_url = post.select_one('div.go-to-post > a')['href']
-            post_type = post['class'][2]
-            post_body = post.select_one('.description_instagram').text.strip()
+        limit = min(self.post_per_day- crawled_item_cnt, len(soup.select('.feed_item')))
+        post_list = data_producer = response.xpath("/html/body/div[@class='stream_container']/ul/li[@data-producer-name]")
+        for data in post_list.getall():
+            post = bs(data, 'html.parser').find('li')
+            # for post in list(soup.select('.feed_item'))[:limit]:
+            channel_name = post['data-producer-name'].strip()
+            page_id = post['data-external-id']
+            page_id, post_id = page_id.split('_')
+            post_url = f'https://www.facebook.com/{page_id}/posts/{post_id}'
+            post_body = post.select_one('.message').text.strip()
+            
             post_stat = {}
             for stat_item in post.select('.stat_bar_item'):
-                stat_name = stat_item.img['src']
-                stat_name = re.search('comment|heart|view', stat_name)[0]
-                stat_val = int(stat_item.text.strip().replace(',', ''))
-                post_stat[stat_name] = stat_val
+                if len(stat_item.select('img')) == 0:
+                    continue
+                elif len(stat_item.select('img')) > 1:
+                    reaction_soup = bs(stat_item['data-reactions'], 'html.parser')
+                    reaction_cnt = re.split('<[^>]*>', stat_item['data-reactions'])[1:]
+                    # post_stat['total'] = reaction_cnt
+                    for idx, reaction in enumerate(reaction_soup.select('img')):
+                        stat_name = reaction['src']
+                        stat_name = re.search('new-.+-icon', stat_name)[0][4:-5]
+                        stat_val = int(reaction_cnt[idx].replace(',', ''))
+                        post_stat[stat_name] = stat_val
+                else:
+                    stat_name = stat_item.select_one('img')['src']
+                    stat_name = re.search('new-.+-icon', stat_name)[0][4:-5]
+                    stat_val = int(stat_item.text.strip().replace(',', ''))
+                    post_stat[stat_name] = stat_val
+            
             post_date = post.select_one('.timestamp-tooltip')['title'][:-4]
             if re.match('\d\d\/\d\d\/\d\d\d\d', post_date):
                 post_date = datetime.strptime(post_date, '%m/%d/%Y %H:%M%p')
@@ -261,12 +278,12 @@ class FBSpider(scrapy.Spider):
                     month=datetime.now().month,
                     day=datetime.now().day,
                 )
-            yield IGItem(
+            yield FBItem(
+                data_id=page_id+'_'+post_id,
                 channel=channel_name,
                 post_url=post_url,
-                post_type=post_type,
                 body=post_body,
-                datetime=post_date,
+                create_dt=post_date,
                 stat=post_stat,
                 by=response.meta['by']+':'+response.meta[response.meta['by']]
             )
@@ -274,7 +291,7 @@ class FBSpider(scrapy.Spider):
         response.meta['crawled_item_cnt'] = crawled_item_cnt
         if crawled_item_cnt < self.post_per_day and limit == 12:
             yield scrapy.Request(
-                f'{CROWDTANGLE_FB_LINK}/{response.meta["id"]}/stream/popular/0/1/{response.meta["crawled_item_cnt"]}/0/0/0/1day/raw/0/8',
+                f'{CROWDTANGLE_FB_LINK}/{response.meta["id"]}/stream/popular/0/1/{response.meta["crawled_item_cnt"]}/0/0/0/1day/raw/0/2,3',
                 self.parse_post,
                 meta=response.meta,
                 cookies=self.cookie

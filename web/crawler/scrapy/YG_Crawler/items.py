@@ -42,18 +42,27 @@ class NewsItem(scrapy.Item):
     reporter    = scrapy.Field()
     title       = scrapy.Field()
     body        = scrapy.Field()
-    datetime    = scrapy.Field()
+    create_dt   = scrapy.Field()
     url         = scrapy.Field()
     keyword     = scrapy.Field()
     reaction    = scrapy.Field()
-    def __repr__(self):
-        return ''
     
 class IGItem(scrapy.Item):
     channel = scrapy.Field()
     post_url = scrapy.Field()
     post_type = scrapy.Field()
     datetime = scrapy.Field()
+    body = scrapy.Field()
+    stat = scrapy.Field()
+    by = scrapy.Field()
+    def __repr__(self):
+        return ''
+    
+class FBItem(scrapy.Item):
+    data_id = scrapy.Field()
+    channel = scrapy.Field()
+    post_url = scrapy.Field()
+    create_dt = scrapy.Field()
     body = scrapy.Field()
     stat = scrapy.Field()
     by = scrapy.Field()
