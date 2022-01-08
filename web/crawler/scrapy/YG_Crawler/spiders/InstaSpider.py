@@ -90,7 +90,7 @@ class InstaSpider(scrapy.Spider):
         '위너'
     ]
 
-    def __init__(self, **kwargs):
+    def __init__(self, keyword_mode=False, **kwargs):
         options = webdriver.ChromeOptions()
         options.add_argument('window-size=1280,720')
         options.add_argument('loglevel=3')
@@ -106,8 +106,11 @@ class InstaSpider(scrapy.Spider):
                 self.cookie = {
                     'cisession': cookie['value']
                 }
+        self.channel_ids = {}
         self.check_artist_channel()
-        self.check_keyword()
+        self.keyword_ids = {}
+        if keyword_mode:
+            self.check_keyword()
     
     def crowdtangle_login(self):
         self.driver.get('https://apps.crowdtangle.com')
@@ -159,7 +162,6 @@ class InstaSpider(scrapy.Spider):
                 )
                 self.driver.find_element_by_css_selector('.add-producer-result button').click()
         soup = bs(self.driver.page_source, 'html.parser')
-        self.channel_ids = {}
         for tag in soup.select('.list-item-group a'):
             self.channel_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
         
@@ -193,7 +195,6 @@ class InstaSpider(scrapy.Spider):
                     ))
                 )
         soup = bs(self.driver.page_source, 'html.parser')
-        self.keyword_ids = {}
         for tag in soup.select('.rc-collapse-content-active .list-item-group a'):
             self.keyword_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
     
@@ -246,12 +247,15 @@ class InstaSpider(scrapy.Spider):
                     month=datetime.now().month,
                     day=datetime.now().day,
                 )
+            post_id = post_url[:-1]
+            post_id = post_id[post_id.rfind('/')+1:]
             yield IGItem(
+                data_id=post_id,
                 channel=channel_name,
                 post_url=post_url,
                 post_type=post_type,
                 body=post_body,
-                datetime=post_date,
+                create_dt=post_date,
                 stat=post_stat,
                 by=response.meta['by']+':'+response.meta[response.meta['by']]
             )

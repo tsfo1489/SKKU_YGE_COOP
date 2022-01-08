@@ -49,10 +49,11 @@ class NewsItem(scrapy.Item):
     reaction    = scrapy.Field()
     
 class IGItem(scrapy.Item):
+    data_id     = scrapy.Field()
     channel = scrapy.Field()
     post_url = scrapy.Field()
     post_type = scrapy.Field()
-    datetime = scrapy.Field()
+    create_dt = scrapy.Field()
     body = scrapy.Field()
     stat = scrapy.Field()
     by = scrapy.Field()
