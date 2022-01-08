@@ -1,7 +1,5 @@
 import re
 import sys
-import json
-from time import strftime
 import scrapy
 import logging
 
@@ -96,7 +94,7 @@ class InstaSpider(scrapy.Spider):
         options = webdriver.ChromeOptions()
         options.add_argument('window-size=1280,720')
         options.add_argument('loglevel=3')
-        # options.add_argument('headless')
+        options.add_argument('headless')
         options.add_argument('no-sandbox')
         options.add_experimental_option("excludeSwitches", ["enable-logging"])
         self.driver = webdriver.Chrome(CHROMEDRIVER_PATH, options=options)
