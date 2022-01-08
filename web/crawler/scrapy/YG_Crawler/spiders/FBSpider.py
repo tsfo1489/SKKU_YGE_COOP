@@ -1,16 +1,16 @@
 import re
-import json
+import sys
 import scrapy
 import logging
 
 from bs4 import BeautifulSoup as bs
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.remote.remote_connection import LOGGER
+from selenium.webdriver.remote.remote_connection import LOGGER as selenium_logger
 from ..apikey import CHROMEDRIVER_PATH, CROWDTANGLE_EMAIL, CROWDTANGLE_PASSWORD, CROWDTANGLE_FB_LINK
 from ..items import FBItem
 
@@ -77,26 +77,45 @@ class FBSpider(scrapy.Spider):
         '위너'
     ]
 
-    def __init__(self, **kwargs):
+    def __init__(self, from_date='', to_date='', channel_mode='True', keyword_mode='False', **kwargs):
         options = webdriver.ChromeOptions()
         options.add_argument('window-size=1280,720')
         options.add_argument('loglevel=3')
-        options.add_argument('headless')
+        # options.add_argument('headless')
         options.add_argument('no-sandbox')
         options.add_experimental_option("excludeSwitches", ["enable-logging"])
         self.driver = webdriver.Chrome(CHROMEDRIVER_PATH, options=options)
         self.driver.implicitly_wait(3)
-        LOGGER.setLevel(logging.CRITICAL)
+        selenium_logger.setLevel(logging.CRITICAL)
         self.crowdtangle_login()
+        self.get_csrf_token()
         for cookie in self.driver.get_cookies():
             if cookie['name'] == 'cisession':
                 self.cookie = {
                     'cisession': cookie['value']
                 }
+        channel_mode = channel_mode == 'True'
+        keyword_mode = keyword_mode == 'True'
+        self.logger.info(f'Channel Crawling Mode: {channel_mode}')
+        self.logger.info(f'Keyword Crawling Mode: {keyword_mode}')
         self.channel_ids = {}
-        self.check_artist_channel()
+        if channel_mode:
+            self.logger.info(f'Get Channel list ids')
+            self.check_artist_channel()
         self.keyword_ids = {}
-        # self.check_keyword()
+        if keyword_mode:
+            self.logger.info(f'Get Keyword list ids')
+            self.check_keyword()
+            
+        if (from_date == '') ^ (to_date == ''):
+            print('Error, from_date and to_date must insert together')
+            sys.exit(1)
+        elif from_date != '':
+            self.from_date = datetime.strptime(from_date, '%Y%m%d')
+            self.to_date = datetime.strptime(to_date, '%Y%m%d')
+        else:
+            self.from_date = datetime.now()
+            self.to_date = datetime.now()
     
     def crowdtangle_login(self):
         self.driver.get('https://apps.crowdtangle.com')
@@ -118,10 +137,20 @@ class FBSpider(scrapy.Spider):
             EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div/div/div[1]/h1'))
         )
 
+    def get_csrf_token(self):
+        self.driver.get(CROWDTANGLE_FB_LINK)
+        script_text = self.driver.page_source
+        raw_token = re.search('csrf_token: \'.*\'', script_text)[0]
+        self.csrf_token = raw_token[raw_token.find('\'')+1:raw_token.rfind('\'')]
+    
     def check_artist_channel(self):
         self.driver.get(CROWDTANGLE_FB_LINK)
-        soup = bs(self.driver.page_source, 'html.parser')
-        builded_channel = [x.text for x in soup.select('.rc-collapse-content-active .list-item-group a')]
+        while True:
+            self.driver.implicitly_wait(1)
+            soup = bs(self.driver.page_source, 'html.parser')
+            builded_channel = [x.text for x in soup.select('.rc-collapse-content-active .list-item-group a')]
+            if len(builded_channel) > 0:
+                break
         for artist in self.channels:
             if artist not in builded_channel:
                 while True:
@@ -176,7 +205,8 @@ class FBSpider(scrapy.Spider):
                         break
         soup = bs(self.driver.page_source, 'html.parser')
         for tag in soup.select('.list-item-group a'):
-            self.channel_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
+            if tag.text in self.channels:
+                self.channel_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
         
     def check_keyword(self):
         self.driver.get(CROWDTANGLE_FB_LINK+'/search/new')
@@ -209,31 +239,44 @@ class FBSpider(scrapy.Spider):
                 )
         soup = bs(self.driver.page_source, 'html.parser')
         for tag in soup.select('.rc-collapse-content-active .list-item-group a'):
-            self.keyword_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
+            if tag.text in self.keywords:
+                self.keyword_ids[tag.text] = tag['href'][tag['href'].rfind('/') + 1:]
     
     def start_requests(self):
-        for keyword in self.keyword_ids:
-            yield scrapy.Request(
-                f'{CROWDTANGLE_FB_LINK}/{self.keyword_ids[keyword]}/stream/popular/0/1/0/0/0/0/1day/raw/0/2,3',
-                self.parse_post,
-                meta={
-                    'by': 'keyword', 'keyword': keyword, 
-                    'id': self.keyword_ids[keyword], 
-                    'crawled_item_cnt': 0
-                },
-                cookies=self.cookie
-            )
-        for channel in self.channel_ids:
-            yield scrapy.Request(
-                f'{CROWDTANGLE_FB_LINK}/{self.channel_ids[channel]}/stream/popular/0/1/0/0/0/0/1day/raw/0/2,3',
-                self.parse_post,
-                meta={
-                    'by': 'channel', 'channel': f'{channel}', 
-                    'id': self.channel_ids[channel], 
-                    'crawled_item_cnt': 0
-                },
-                cookies=self.cookie
-            )
+        pivot = self.from_date
+        while pivot <= self.to_date:
+            form_data={
+                'csrf_token': self.csrf_token,
+                'start_date': pivot.strftime('%Y-%m-%d 00:00:00'),
+                'end_date': pivot.strftime('%Y-%m-%d 23:59:59')
+            }
+            for keyword in self.keyword_ids:
+                yield scrapy.FormRequest(
+                    f'{CROWDTANGLE_FB_LINK}/{self.keyword_ids[keyword]}/stream/popular/0/1/0/0/0/0/custom/raw/0/2,3',
+                    self.parse_post,
+                    method='POST',
+                    meta={
+                        'by': 'keyword', 'keyword': keyword, 
+                        'id': self.keyword_ids[keyword], 
+                        'crawled_item_cnt': 0
+                    },
+                    cookies=self.cookie,
+                    formdata=form_data
+                )
+            for channel in self.channel_ids:
+                yield scrapy.FormRequest(
+                    f'{CROWDTANGLE_FB_LINK}/{self.channel_ids[channel]}/stream/popular/0/1/0/0/0/0/custom/raw/0/2,3',
+                    self.parse_post,
+                    method='POST',
+                    meta={
+                        'by': 'channel', 'channel': f'{channel}', 
+                        'id': self.channel_ids[channel], 
+                        'crawled_item_cnt': 0
+                    },
+                    cookies=self.cookie,
+                    formdata=form_data
+                )
+            pivot += timedelta(days=1)
 
     def parse_post(self, response):
         soup = bs(response.body, 'html.parser')
