@@ -14,7 +14,7 @@ from ..apikey import CHROMEDRIVER_PATH, CROWDTANGLE_EMAIL, CROWDTANGLE_PASSWORD,
 from ..items import IGItem
 
 class InstaSpider(scrapy.Spider):
-    name = 'Insta'
+    name = 'Instagram'
     start_urls = ['https://apps.crowdtangle.com/']
     custom_settings = {
         'SPIDER_MIDDLEWARES': {
