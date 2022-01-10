@@ -3,4 +3,4 @@ Scrapy==2.5.1
 bs4==0.0.1
 selenium==3.141.0
 pymongo==4.0.1
-git+git://github.com/himanshudabas/twint.git@master
+twint @ git+https://github.com/Museum-Barberini/twint.git@cc3498af87d7df711ee42490cbac01d5831ac4ae

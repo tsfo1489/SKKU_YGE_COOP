@@ -50,7 +50,7 @@ class TwitterKeywordSpider(scrapy.Spider):
     name = 'twitter_keyword'
     custom_settings = {
         'ITEM_PIPELINES' : {
-            'sns.pipelines.TwitterPipeline': 400,
+            'YG_Crawler.pipelines.MongoDBPipelines': 400,
         }
     }
     def __init__(self, keywords='', begin_date='', end_date='', geo='', lang=''):
@@ -74,6 +74,7 @@ class TwitterKeywordSpider(scrapy.Spider):
             self.geoList = geo.split(',')
         else :
             self.geoList = ['']
+        self.lang = lang
     def set_custom(self, customList:list):
         self.config.Custom["tweet"] = customList
         print("Custom: ",self.config.Custom["tweet"])
@@ -156,7 +157,7 @@ class TwitterKeywordSpider(scrapy.Spider):
                             loader.add_value('userId', str(tweet.user_id))
                             loader.add_value('username', tweet.username)
                             loader.add_value('name',tweet.name)
-                            loader.add_value('date',str(tweet.datestamp))
+                            loader.add_value('date', tweet.datestamp + " " + tweet.timestamp)
                             loader.add_value('body',tweet.tweet)
                             loader.add_value('lang',tweet.lang)
                             loader.add_value('hashtags',tweet.hashtags)
@@ -172,7 +173,7 @@ class TwitterUserSpider(scrapy.Spider):
     name = 'twitter_user'
     custom_settings = {
         'ITEM_PIPELINES' : {
-            'sns.pipelines.TwitterPipeline': 400,
+            'YG_Crawler.pipelines.MongoDBPipelines': 400,
         }
     }
     def __init__(self, users='', begin_date='', end_date='', geo='', lang='',keyword=''):
@@ -282,7 +283,7 @@ class TwitterUserSpider(scrapy.Spider):
                         loader.add_value('userId', str(tweet.user_id))
                         loader.add_value('username', tweet.username)
                         loader.add_value('name',tweet.name)
-                        loader.add_value('date',str(tweet.datestamp))
+                        loader.add_value('date', tweet.datestamp + " " + tweet.timestamp)
                         loader.add_value('body',tweet.tweet)
                         loader.add_value('lang',tweet.lang)
                         loader.add_value('keyword',self.keyword)
@@ -303,7 +304,7 @@ class TwitterRTSpider(scrapy.Spider):
     name = 'twitter_user_rt'
     custom_settings = {
         'ITEM_PIPELINES' : {
-            'sns.pipelines.TwitterPipeline': 400,
+            'YG_Crawler.pipelines.MongoDBPipelines': 400,
         }
     }
     def __init__(self, users='', begin_date='', end_date='', geo='', lang='',keyword=''):
@@ -406,7 +407,7 @@ class TwitterRTSpider(scrapy.Spider):
                         loader.add_value('userId', str(tweet.user_id))
                         loader.add_value('username', tweet.username)
                         loader.add_value('name',tweet.name)
-                        loader.add_value('date',str(tweet.datestamp))
+                        loader.add_value('date', tweet.datestamp + " " + tweet.timestamp)
                         loader.add_value('body',tweet.tweet)
                         loader.add_value('lang',tweet.lang)
                         loader.add_value('hashtags',tweet.hashtags)
@@ -415,7 +416,6 @@ class TwitterRTSpider(scrapy.Spider):
                             loader.add_value('geo',self.user_geo[username])
                         except:
                             loader.add_value('geo',self.geo)
-
 
                         yield loader.load_item()
 
