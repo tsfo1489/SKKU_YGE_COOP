@@ -12,7 +12,11 @@ class YoutubeSpider(scrapy.Spider):
     name = 'Youtube'
     allowed_domains = ['youtube.com', 'googleapis.com']
 
-    def __init__(self, channel_ids='', keywords='', from_date='', to_date='', **kwargs):
+    def __init__(self, 
+                 channel_ids='', keywords='', 
+                 from_date='', to_date='', 
+                 crawling_mode='Comment',
+                 **kwargs):
         super().__init__(**kwargs)
         self.ids = []
         for id in channel_ids.split(','):
@@ -30,6 +34,10 @@ class YoutubeSpider(scrapy.Spider):
             self.date_filter = True
             self.from_date = from_date
             self.to_date = to_date
+        crawling_mode_list = ['Comment', 'Subcomment']
+        if crawling_mode not in crawling_mode_list:
+            print(f'Crawling_mode must be [{crawling_mode_list}]')
+            sys.exit(1)
 
     def start_requests(self):
         for id in self.ids :
@@ -63,7 +71,7 @@ class YoutubeSpider(scrapy.Spider):
         data = json.loads(response.body)
         data = data['items'][0]
         doc = YoutubeChannelItem()
-        doc['id'] = data['id']
+        doc['data_id'] = data['id']
         doc['title'] = data['snippet']['title']
         doc['desc'] = data['snippet']['description']
         doc['view'] = data['statistics']['viewCount']
@@ -88,11 +96,11 @@ class YoutubeSpider(scrapy.Spider):
         meta = response.meta
         data = data['items'][0]
         doc = YoutubeVideoItem()
-        doc['id'] = data['id']
+        doc['data_id'] = data['id']
         doc['channelId'] = data['snippet']['channelId']
         doc['title'] = data['snippet']['title']
         doc['desc'] = data['snippet']['description']
-        doc['date'] = data['snippet']['publishedAt'][:10]
+        doc['create_dt'] = data['snippet']['publishedAt'][:10]
         doc['view'] = data['statistics']['viewCount']
         doc['like'] = data['statistics']['likeCount']
         meta['Video'] = doc
@@ -151,10 +159,10 @@ class YoutubeSpider(scrapy.Spider):
         for comment in data['items'] :
             top_comment = comment['snippet']['topLevelComment']
             doc = YoutubeCommentItem()
-            doc['commentId'] = top_comment['id']
+            doc['data_id'] = top_comment['id']
             doc['videoId']   = top_comment['snippet']['videoId']
             doc['body']      = top_comment['snippet']['textOriginal']
-            doc['datetime']  = top_comment['snippet']['publishedAt']
+            doc['create_dt'] = top_comment['snippet']['publishedAt']
             doc['like']      = top_comment['snippet']['likeCount']
             yield doc
             # if comment['snippet']['totalReplyCount'] > 0 :

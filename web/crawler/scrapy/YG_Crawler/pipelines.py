@@ -14,5 +14,5 @@ class MongoDBPipelines:
         self.db = connection['crawling_tuto']
         
     def process_item(self, item, spider):
-        self.db[spider.name].insert_one(dict(item))
+        self.db[item.target].insert_one(dict(item))
         return item
