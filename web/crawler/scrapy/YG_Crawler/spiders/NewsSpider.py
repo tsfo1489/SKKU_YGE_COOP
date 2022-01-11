@@ -70,7 +70,7 @@ class NewsSpider(scrapy.Spider):
                     }
                 )
         next_btn = soup.select_one('.btn_next')
-        if next_btn['aria-disabled'] == 'false':
+        if next_btn['aria-disabled'] is not None and next_btn['aria-disabled'] == 'false':
             query = {
                 'start': response.meta['start'] + 10,
                 'sort': 1,
@@ -83,7 +83,8 @@ class NewsSpider(scrapy.Spider):
             yield scrapy.Request(
                 f'{NAVER_SEARCH_LINK}?{query_str}',
                 self.parse_news_list,
-                meta={'keyword': response.meta["keyword"], 'start':response.meta['start'] + 10}
+                meta={'keyword': response.meta["keyword"], 'start':response.meta['start'] + 10},
+                dont_filter=True
             )
     
     def korean_date_to_iso8601(self, korean_date):
