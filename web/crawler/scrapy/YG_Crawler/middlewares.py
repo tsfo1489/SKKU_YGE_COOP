@@ -5,6 +5,8 @@
 
 from os import spawnl
 from scrapy import signals
+import pymysql
+from .apikey import *
 
 class NewsSpiderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
@@ -148,3 +150,76 @@ class IGSpiderMiddleware:
         print(spider.name)
         print(spider.cookie)
         spider.driver.close()
+        
+class TwitterSpiderMiddleware:
+    @classmethod
+    def from_crawler(cls, crawler):
+        s = cls()
+        crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
+        return s
+    
+    def process_spider_input(self, response, spider):
+        return None
+
+    def process_spider_output(self, response, result, spider):
+        for i in result:
+            yield i
+
+    def process_spider_exception(self, response, exception, spider):
+        pass
+
+    def process_start_requests(self, start_requests, spider):
+        for r in start_requests:
+            yield r
+            
+    def spider_opened(self, spider):
+        spider.logger.info('Spider opened: %s' % spider.name)
+        try:
+            conn = pymysql.connect(
+                user=SQL_USER,
+                passwd=SQL_PW,
+                host=SQL_HOST,
+                port=SQL_PORT,
+                db=SQL_DB
+            )
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+        except:
+            print('ERROR: DB connection failed')
+        print(spider.name)
+        select_arg_platform = [1] #temp platform_id=1: twitter
+        select_sql_keyword = """select id, artist_id, platform_id, keyword from collect_target_keyword where platform_id=%s"""
+        
+        select_sql_channel = """select id, artist_id, platform_id, target_url, channel, channel_name from collect_target where platform_id=%s"""
+        if spider.name in ["twitter_keyword"]:
+            cursor.execute(select_sql_keyword, select_arg_platform)
+            rows = cursor.fetchall()
+            print()
+            keywords = []
+            try:
+                for i in range(len(rows)):
+                    fetch_keyword = rows[i]["keyword"]
+                    keywords.append(fetch_keyword)
+            except Exception as e:
+                print(e)
+                
+            spider.keywords=keywords
+            print("spider.keywords: ", spider.keywords)
+        elif spider.name in ["twitter_user", "twitter_user_rt"] :
+            cursor.execute(select_sql_channel, select_arg_platform)
+            rows = cursor.fetchall()
+            print()
+            channel_names = []
+            try:
+                for i in range(len(rows)):
+                    print(type(rows[i]), rows[i])
+                    fetch_channel_name = rows[i]["channel_name"]
+                    
+                    print(fetch_channel_name)
+                    channel_names.append(fetch_channel_name)
+            except Exception as e:
+                print(e)
+            spider.users=channel_names
+            print("spider.users: ", spider.users)    
+        
+    def spider_closed(self, spider):
+        print(spider.name)

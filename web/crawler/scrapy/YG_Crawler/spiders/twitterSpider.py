@@ -1,9 +1,7 @@
 import json
 
 import scrapy
-from YG_Crawler.items import TwitterKeywordItem
-from YG_Crawler.items import TwitterUserItem
-from YG_Crawler.items import TwitterRTItem
+from YG_Crawler.items import TwitterItem
 from scrapy.loader import ItemLoader
 
 import twint
@@ -11,23 +9,6 @@ import datetime as dt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-geo_user = {
-    "North_America":["allkpop","soompi","iconickdramas","kdramafairy","kdramaworlld"],
-    "Southeast_Asia":["infodrakor_id", "kdrama_menfess", "korcinema_fess"],
-    "Europe":["Spain_Kpop_", "Kpop_Project_SP"],
-}
-user_geo = {
-    "allkpop":"North_America",
-    "soompi": "North_America",
-    "iconickdramas" : "North_America",
-    "kdramafairy" : "North_America",
-    "kdramaworlld" : "North_America",
-    "infodrakor_id":"Southeast_Asia",
-    "kdrama_menfess":"Southeast_Asia",
-    "korcinema_fess":"Southeast_Asia",
-    "Spain_Kpop_":"Europe",
-    "Kpop_Project_SP" : "Europe"
-}
 geo_dict = {
     "North_America":"39.09988405413171,-94.57866878020425,2400km",
     "South_America":"-25.26125550803821,-57.57779557215821,3500km",
@@ -45,56 +26,72 @@ def write_json(path, data) :
         path = path +".json"
     with open(path, 'w', encoding = "utf-8") as outfile:
         outfile.write(json.dumps(data, ensure_ascii=False))
+        
+def get_timedelta(period):
+    #default is days=1
+    timedelta = dt.timedelta(days=1)        
+    if period == "week" :
+        timedelta = dt.timedelta(weeks=1)
+    elif period == "month" :
+        timedelta = relativedelta(months=1)
+    elif period == "quarter" :
+        timedelta = relativedelta(months=3)
+    elif period == "year" :
+        timedelta = relativedelta(years=1)
+    return timedelta
+
+def get_default_date():
+    
+    YYYY = dt.datetime.today().year # 현재 연도 가져오기
+    MM = dt.datetime.today().month  # 현재 월 가져오기
+    DD = dt.datetime.today().day    # 현재 일 가져오기
+
+    today_date = "{0:04d}-{1:02d}-{2:02d}".format(YYYY,MM,DD)
+    today_datetime = dt.datetime.strptime(today_date,"%Y-%m-%d")
+    yesterday_datetime = today_datetime - dt.timedelta(days=1)  
+    yesterday_date = dt.datetime.strftime(yesterday_datetime,"%Y-%m-%d")
+    print(yesterday_date, " ~ ", today_date)
+    return yesterday_date, today_date
 
 class TwitterKeywordSpider(scrapy.Spider):
     name = 'twitter_keyword'
     custom_settings = {
+        'SPIDER_MIDDLEWARES': {
+            'YG_Crawler.middlewares.TwitterSpiderMiddleware': 800
+        },
         'ITEM_PIPELINES' : {
             'YG_Crawler.pipelines.MongoDBPipelines': 400,
         }
     }
-    def __init__(self, keywords='', begin_date='', end_date='', geo='', lang=''):
+    
+    def __init__(self, from_date='', to_date='', geo='', lang=''):
         self.config = twint.Config()
         self.set_custom(["id", "date", "username", "user_id", "tweet", "language", "geo"])
-        # 좌측이 데이터베이스에 표시할 내용, 우측이 실제 트위터에서 데이터를 수집할 때 사용할 파라미터
+        
         self.geoDict = geo_dict
-        self.set_timedelta("day")
-
-        self.keywords = ['BLACKPINK']
-        if keywords != '':
-            self.keywords = keywords.split(',')
-        self.begin_date = '2021-01-01'
-        self.end_date = '2021-01-31'
-        if begin_date != '' :
-            self.begin_date = f'{begin_date[:4]}-{begin_date[4:6]}-{begin_date[6:8]}'
-        if end_date != '' :
-            self.end_date = f'{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}'
-        self.geoList = ['North_America']
+        self.timedelta = get_timedelta("day")
+        # if keywords != '':
+        #     self.keywords = keywords.split(',')
+        
+        # 디폴트 값을 어제, 오늘로 설정
+        self.from_date, self.to_date = get_default_date()
+        
+        if from_date != '' :
+            self.from_date = f'{from_date[:4]}-{from_date[4:6]}-{from_date[6:8]}'
+        if to_date != '' :
+            self.to_date = f'{to_date[:4]}-{to_date[4:6]}-{to_date[6:8]}'
+        self.geoList = [""]
         if geo != '':
             self.geoList = geo.split(',')
-        else :
-            self.geoList = ['']
         self.lang = lang
+        
     def set_custom(self, customList:list):
         self.config.Custom["tweet"] = customList
         print("Custom: ",self.config.Custom["tweet"])
-    def set_timedelta(self, period):
-        self.period = period
-        if period == "day":
-            self.timedelta = dt.timedelta(days=1)
-        elif period == "week" :
-            self.timedelta = dt.timedelta(weeks=1)
-        elif period == "month" :
-            self.timedelta = relativedelta(months=1)
-        elif period == "quarter" :
-            self.timedelta = relativedelta(months=3)
-        elif period == "year" :
-            self.timedelta = relativedelta(years=1)
-
+    
     def start_requests(self):
         print("start_requests")
         start_url = 'http://quotes.toscrape.com/page/1/'
-        
         yield scrapy.Request(url = start_url, callback=self.search)
     
     def search(self, response):
@@ -116,14 +113,15 @@ class TwitterKeywordSpider(scrapy.Spider):
                 self.config.Geo = self.geoDict[geo]
                 print(f"#### {geo} ####")
                 
+            print("spider keywords: ", self.keywords)
             for keyword in self.keywords:
                 print(f"#### {keyword} ####")
                 self.config.Search = keyword
 
                 # date setting
-                pivot = self.begin_date
-                date_since = datetime.strptime(self.begin_date, '%Y-%m-%d')
-                date_until = datetime.strptime(self.end_date,'%Y-%m-%d')
+                pivot = self.from_date
+                date_since = datetime.strptime(self.from_date, '%Y-%m-%d')
+                date_until = datetime.strptime(self.to_date,'%Y-%m-%d')
                 date_pivot = date_since
                 while True :
                     self.config.Limit=2000
@@ -152,17 +150,18 @@ class TwitterKeywordSpider(scrapy.Spider):
                         print(f"complete search for {keyword} between {self.config.Since} and {self.config.Until}")
                         
                         for tweet in tweets:
-                            loader = ItemLoader(item = TwitterKeywordItem(),response=response)
-                            loader.add_value('tweetId', str(tweet.id))
-                            loader.add_value('userId', str(tweet.user_id))
+                            loader = ItemLoader(item = TwitterItem(),response=response)
+                            loader.add_value('data_id', str(tweet.id))
+                            loader.add_value('create_dt', tweet.datestamp + " " + tweet.timestamp)
+                            loader.add_value('body',tweet.tweet)
+                            loader.add_value('user_id', str(tweet.user_id))
                             loader.add_value('username', tweet.username)
                             loader.add_value('name',tweet.name)
-                            loader.add_value('date', tweet.datestamp + " " + tweet.timestamp)
-                            loader.add_value('body',tweet.tweet)
                             loader.add_value('lang',tweet.lang)
-                            loader.add_value('hashtags',tweet.hashtags)
-                            loader.add_value('geo',geo)
                             loader.add_value('keyword',keyword)
+                            loader.add_value('geo',geo)
+                            loader.add_value('hashtags',tweet.hashtags)
+                            
                             yield loader.load_item()
 
                         print("Search Done!")
@@ -172,55 +171,36 @@ class TwitterKeywordSpider(scrapy.Spider):
 class TwitterUserSpider(scrapy.Spider):
     name = 'twitter_user'
     custom_settings = {
+        'SPIDER_MIDDLEWARES': {
+            'YG_Crawler.middlewares.TwitterSpiderMiddleware': 800
+        },
         'ITEM_PIPELINES' : {
             'YG_Crawler.pipelines.MongoDBPipelines': 400,
         }
     }
-    def __init__(self, users='', begin_date='', end_date='', geo='', lang='',keyword=''):
+    def __init__(self, from_date='', to_date='', lang=''):
         self.config = twint.Config()
-        self.set_custom(["id", "date", "username", "user_id", "tweet", "language", "geo", "mention"])
-        # 좌측이 데이터베이스에 표시할 내용, 우측이 실제 트위터에서 데이터를 수집할 때 사용할 파라미터
-        self.set_timedelta("day")
+        self.set_custom(["id", "date", "username", "user_id", "tweet", "language", "geo"])
 
-        self.geo_user = geo_user
-        self.user_geo = user_geo
+        self.timedelta = get_timedelta("day") 
+        # if users != '':
+        #     self.users = users.split(',')
+            
+        # 디폴트 값을 어제, 오늘로 설정
+        self.from_date, self.to_date = get_default_date()
         
-        self.users = ['allkpop']
-        if users != '':
-            self.users = users.split(',')
+        if from_date != '' :
+            self.from_date = f'{from_date[:4]}-{from_date[4:6]}-{from_date[6:8]}'
+        if to_date != '' :
+            self.to_date = f'{to_date[:4]}-{to_date[4:6]}-{to_date[6:8]}'
             
-        self.begin_date = '2021-01-01'
-        self.end_date = '2021-01-31'
-        if begin_date != '' :
-            self.begin_date = f'{begin_date[:4]}-{begin_date[4:6]}-{begin_date[6:8]}'
-        if end_date != '' :
-            self.end_date = f'{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}'
-            
-        self.geo = geo
-        if geo != '':
-            try:
-                self.users = self.geo_user[geo]
-            except:
-                print("unsupport geo")
-                self.users = users.split(',')
         self.lang = lang
-        self.keyword = keyword
+        self.keyword = ''
+        self.geo = ''
         
     def set_custom(self, customList:list):
         self.config.Custom["tweet"] = customList
         print("Custom: ",self.config.Custom["tweet"])
-    def set_timedelta(self, period):
-        self.period = period
-        if period == "day":
-            self.timedelta = dt.timedelta(days=1)
-        elif period == "week" :
-            self.timedelta = dt.timedelta(weeks=1)
-        elif period == "month" :
-            self.timedelta = relativedelta(months=1)
-        elif period == "quarter" :
-            self.timedelta = relativedelta(months=3)
-        elif period == "year" :
-            self.timedelta = relativedelta(years=1)
 
     def start_requests(self):
         print("start_requests")
@@ -236,21 +216,14 @@ class TwitterUserSpider(scrapy.Spider):
         if self.lang != '':
             self.config.Lang = self.lang
 
-        # Retweets Filter (on)
-        # self.config.Filter_retweets = False
-        # self.config.Retweets = True
-        # self.config.Native_retweets = False
-
         for username in self.users:
             print(f"#### {username} ####")
             self.config.Username = username
-            # self.config.User_full = True
-            # self.config.Profile_full = True
 
             # date setting
-            pivot = self.begin_date
-            date_since = datetime.strptime(self.begin_date, '%Y-%m-%d')
-            date_until = datetime.strptime(self.end_date, '%Y-%m-%d')
+            pivot = self.from_date
+            date_since = datetime.strptime(self.from_date, '%Y-%m-%d')
+            date_until = datetime.strptime(self.to_date, '%Y-%m-%d')
             date_pivot = date_since
             while True :
                 self.config.Store_object = True
@@ -278,20 +251,16 @@ class TwitterUserSpider(scrapy.Spider):
                     print(f"complete search for {username} between {self.config.Since} and {self.config.Until}")
 
                     for tweet in tweets:
-                        loader = ItemLoader(item = TwitterUserItem(),response=response)
-                        loader.add_value('tweetId', str(tweet.id))
-                        loader.add_value('userId', str(tweet.user_id))
+                        loader = ItemLoader(item = TwitterItem(),response=response)
+                        loader.add_value('data_id', str(tweet.id))
+                        loader.add_value('create_dt', tweet.datestamp + " " + tweet.timestamp)
+                        loader.add_value('body',tweet.tweet)
+                        loader.add_value('user_id', str(tweet.user_id))
                         loader.add_value('username', tweet.username)
                         loader.add_value('name',tweet.name)
-                        loader.add_value('date', tweet.datestamp + " " + tweet.timestamp)
-                        loader.add_value('body',tweet.tweet)
                         loader.add_value('lang',tweet.lang)
                         loader.add_value('keyword',self.keyword)
-                        try:
-                            loader.add_value('geo',self.user_geo[tweet.username])
-                        except:
-                            loader.add_value('geo',self.geo)
-
+                        loader.add_value('geo',self.geo)
                         loader.add_value('hashtags',tweet.hashtags)
 
                         yield loader.load_item()
@@ -303,55 +272,36 @@ class TwitterUserSpider(scrapy.Spider):
 class TwitterRTSpider(scrapy.Spider):
     name = 'twitter_user_rt'
     custom_settings = {
+        'SPIDER_MIDDLEWARES': {
+            'YG_Crawler.middlewares.TwitterSpiderMiddleware': 800
+        },
         'ITEM_PIPELINES' : {
             'YG_Crawler.pipelines.MongoDBPipelines': 400,
         }
     }
-    def __init__(self, users='', begin_date='', end_date='', geo='', lang='',keyword=''):
+    def __init__(self, from_date='', to_date='', lang=''):
         self.config = twint.Config()
-        self.set_custom(["id", "conversation_id","date", "username", "user_id", "tweet", "language", "geo", "mention"])
-        # 좌측이 데이터베이스에 표시할 내용, 우측이 실제 트위터에서 데이터를 수집할 때 사용할 파라미터
-        self.set_timedelta("day")
-        self.geo_user = geo_user
-        self.user_geo = user_geo
+        self.set_custom(["id", "conversation_id","date", "username", "user_id", "tweet", "language", "geo"])
 
-        self.users = ['allkpop']
-        if users != '':
-            self.users = users.split(',')
-        if geo != '':
-            self.users = self.geo_user[geo]
-        self.begin_date = '2021-01-01'
-        self.end_date = '2021-01-31'
-        if begin_date != '' :
-            self.begin_date = f'{begin_date[:4]}-{begin_date[4:6]}-{begin_date[6:8]}'
-        if end_date != '' :
-            self.end_date = f'{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}'
+        self.timedelta = get_timedelta("day")
+        # 디폴트 값을 어제, 오늘로 설정
+        self.from_date, self.to_date = get_default_date()
+        
+        # if users != '':
+        #     self.users = users.split(',')
+
+        if from_date != '' :
+            self.from_date = f'{from_date[:4]}-{from_date[4:6]}-{from_date[6:8]}'
+        if to_date != '' :
+            self.to_date = f'{to_date[:4]}-{to_date[4:6]}-{to_date[6:8]}'
             
-        self.geo = geo
-        if geo != '':
-            try:
-                self.users = self.geo_user[geo]
-            except:
-                print("unsupport geo")
-                self.users = users.split(',')
         self.lang = lang
-        self.keyword = keyword
+        self.geo = ''
+        self.keyword = ''
         
     def set_custom(self, customList:list):
         self.config.Custom["tweet"] = customList
         print("Custom: ",self.config.Custom["tweet"])
-    def set_timedelta(self, period):
-        self.period = period
-        if period == "day":
-            self.timedelta = dt.timedelta(days=1)
-        elif period == "week" :
-            self.timedelta = dt.timedelta(weeks=1)
-        elif period == "month" :
-            self.timedelta = relativedelta(months=1)
-        elif period == "quarter" :
-            self.timedelta = relativedelta(months=3)
-        elif period == "year" :
-            self.timedelta = relativedelta(years=1)
 
     def start_requests(self):
         print("start_requests")
@@ -365,14 +315,15 @@ class TwitterRTSpider(scrapy.Spider):
         # Language Filter
         if self.lang != '' :
             self.config.Lang = self.lang
+            
         for username in self.users:
             print(f"#### {username} ####")
             self.config.Search ="@"+username
             
             # date setting
-            pivot = self.begin_date
-            date_since = datetime.strptime(self.begin_date, '%Y-%m-%d')
-            date_until = datetime.strptime(self.end_date,'%Y-%m-%d')
+            pivot = self.from_date
+            date_since = datetime.strptime(self.from_date, '%Y-%m-%d')
+            date_until = datetime.strptime(self.to_date,'%Y-%m-%d')
             date_pivot = date_since
             while True :
                 self.config.Store_object = True
@@ -401,21 +352,18 @@ class TwitterRTSpider(scrapy.Spider):
                     print(f"complete search for {username} between {self.config.Since} and {self.config.Until}")
 
                     for tweet in tweets:
-                        loader = ItemLoader(item = TwitterRTItem(),response=response)
-                        loader.add_value('rtId', str(tweet.id))
-                        loader.add_value('bodyId',str(tweet.conversation_id))
-                        loader.add_value('userId', str(tweet.user_id))
+                        loader = ItemLoader(item = TwitterItem(),response=response)
+                        loader.add_value('data_id', str(tweet.id))
+                        loader.add_value('create_dt', tweet.datestamp + " " + tweet.timestamp)
+                        loader.add_value('body',tweet.tweet)
+                        loader.add_value('user_id', str(tweet.user_id))
                         loader.add_value('username', tweet.username)
                         loader.add_value('name',tweet.name)
-                        loader.add_value('date', tweet.datestamp + " " + tweet.timestamp)
-                        loader.add_value('body',tweet.tweet)
                         loader.add_value('lang',tweet.lang)
-                        loader.add_value('hashtags',tweet.hashtags)
                         loader.add_value('keyword',self.keyword)
-                        try:
-                            loader.add_value('geo',self.user_geo[username])
-                        except:
-                            loader.add_value('geo',self.geo)
+                        loader.add_value('geo',self.geo)
+                        loader.add_value('hashtags',tweet.hashtags)
+                        loader.add_value('object_id',str(tweet.conversation_id))
 
                         yield loader.load_item()
 

@@ -76,57 +76,21 @@ class FBItem(scrapy.Item):
     def __repr__(self):
         return ''
     
-class TwitterKeywordItem(scrapy.Item):
-    tweetId = scrapy.Field()
-    userId = scrapy.Field()
-    username = scrapy.Field()
-    name = scrapy.Field()
-    date = scrapy.Field()
-    body = scrapy.Field()
-    geo = scrapy.Field()
-    lang = scrapy.Field()
-    keyword = scrapy.Field()
-    hashtags = scrapy.Field()
-    mentions = scrapy.Field()
-    tweet_links = scrapy.Field()
-    retweeted_tweet = scrapy.Field()
-    tweet_type = scrapy.Field()
+    
+class TwitterItem(scrapy.Item):
+    target =    "Twitter"
+    data_id =   scrapy.Field()
+    create_dt = scrapy.Field()
+    body =      scrapy.Field()
+    user_id =   scrapy.Field()
+    username =  scrapy.Field()
+    name =      scrapy.Field()
+    lang =      scrapy.Field()
+    keyword =   scrapy.Field()
+    geo =       scrapy.Field()
+    hashtags =  scrapy.Field()
+    object_id = scrapy.Field()
+    channel =   scrapy.Field()
     def __repr__(self):
         return ''
     
-class TwitterUserItem(scrapy.Item):
-    tweetId = scrapy.Field()
-    userId = scrapy.Field()
-    username = scrapy.Field()
-    name = scrapy.Field()
-    date = scrapy.Field()
-    body = scrapy.Field()
-    geo = scrapy.Field()
-    lang = scrapy.Field()
-    keyword = scrapy.Field()
-    hashtags = scrapy.Field()
-    mentions = scrapy.Field()
-    tweet_links = scrapy.Field()
-    retweeted_tweet = scrapy.Field()
-    tweet_type = scrapy.Field()
-    def __repr__(self):
-        return ''
-
-class TwitterRTItem(scrapy.Item):
-    rtId = scrapy.Field()
-    bodyId = scrapy.Field()
-    userId = scrapy.Field()
-    username = scrapy.Field()
-    name = scrapy.Field()
-    date = scrapy.Field()
-    body = scrapy.Field()
-    geo = scrapy.Field()
-    lang = scrapy.Field()
-    keyword = scrapy.Field()
-    hashtags = scrapy.Field()
-    mentions = scrapy.Field()
-    tweet_links = scrapy.Field()
-    retweeted_tweet = scrapy.Field()
-    tweet_type = scrapy.Field()
-    def __repr__(self):
-        return ''
