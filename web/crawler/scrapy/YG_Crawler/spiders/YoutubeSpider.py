@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import re
 import sys
 import json
@@ -32,12 +33,14 @@ class YoutubeSpider(scrapy.Spider):
             sys.exit(1)
         elif from_date != '':
             self.date_filter = True
-            self.from_date = from_date
-            self.to_date = to_date
+            self.from_date = datetime.strptime(from_date, '%Y%m%d').replace(hour=23, minute=59, second=59)
+            self.to_date = datetime.strptime(to_date, '%Y%m%d').replace(hour=23, minute=59, second=59)
         crawling_mode_list = ['Comment', 'Subcomment']
         if crawling_mode not in crawling_mode_list:
             print(f'Crawling_mode must be [{crawling_mode_list}]')
             sys.exit(1)
+        else:
+            self.crawling_mode = crawling_mode
 
     def start_requests(self):
         for id in self.ids :
@@ -77,7 +80,7 @@ class YoutubeSpider(scrapy.Spider):
         doc['view'] = data['statistics']['viewCount']
         doc['subs'] = data['statistics']['subscriberCount']
         doc['video'] = data['statistics']['videoCount']
-        yield doc
+        # yield doc
         query = {
             'key': YT_APIKEY,
             'part': 'snippet',
@@ -96,14 +99,19 @@ class YoutubeSpider(scrapy.Spider):
         meta = response.meta
         data = data['items'][0]
         doc = YoutubeVideoItem()
+        date = data['snippet']['publishedAt']
+        date = datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
         doc['data_id'] = data['id']
         doc['channelId'] = data['snippet']['channelId']
         doc['title'] = data['snippet']['title']
         doc['desc'] = data['snippet']['description']
-        doc['create_dt'] = data['snippet']['publishedAt'][:10]
+        doc['create_dt'] = date + timedelta(hours=9)
         doc['view'] = data['statistics']['viewCount']
         doc['like'] = data['statistics']['likeCount']
         meta['Video'] = doc
+        
+        if self.from_date <= doc['create_dt'] and doc['create_dt'] <= self.to_date:
+            yield doc
     
         if 'type' in response.meta and response.meta['type'] == 'Video' :
             query = {
@@ -119,7 +127,6 @@ class YoutubeSpider(scrapy.Spider):
                     dont_filter=True
                     )
         else :
-            yield doc
             query = {
                 'key': YT_APIKEY,
                 'part': 'snippet, id, replies',
@@ -156,15 +163,22 @@ class YoutubeSpider(scrapy.Spider):
 
     def parse_video(self, response) :
         data = json.loads(response.body)
+        next_page_flag = True
         for comment in data['items'] :
             top_comment = comment['snippet']['topLevelComment']
             doc = YoutubeCommentItem()
+            date = top_comment['snippet']['publishedAt']
+            date = datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
             doc['data_id'] = top_comment['id']
             doc['videoId']   = top_comment['snippet']['videoId']
             doc['body']      = top_comment['snippet']['textOriginal']
-            doc['create_dt'] = top_comment['snippet']['publishedAt']
+            doc['create_dt'] = date + timedelta(hours=9)
             doc['like']      = top_comment['snippet']['likeCount']
-            yield doc
+            if self.from_date <= doc['create_dt'] and doc['create_dt'] <= self.to_date and self.crawling_mode == 'Comment':
+                yield doc
+            elif doc['create_dt'] < self.from_date:
+                next_page_flag = False
+                break
             # if comment['snippet']['totalReplyCount'] > 0 :
             #     for repl in comment['replies']['comments'] :
             #         doc = YoutubeCommentItem()
@@ -175,7 +189,7 @@ class YoutubeSpider(scrapy.Spider):
             #         doc['like']      = repl['snippet']['likeCount']
             #         yield doc
         
-        if 'nextPageToken' in data :
+        if 'nextPageToken' in data and (next_page_flag or self.crawling_mode == 'Subcomment'):
             parsed_query = dict(parse.parse_qsl(response.url[response.url.find('?') + 1:]))
             parsed_query['pageToken'] = data['nextPageToken']
             query_str = parse.urlencode(parsed_query)
