@@ -4,6 +4,7 @@ import json
 import scrapy
 from datetime import datetime
 from urllib import parse
+from bs4 import element
 from bs4 import BeautifulSoup as bs
 from ..items import *
 
@@ -106,9 +107,15 @@ class NewsSpider(scrapy.Spider):
         else:
             title = soup.select_one('#articleTitle').text
             body = soup.select_one('#articleBodyContents')
-        body = body.text if body is not None else ''
-        body = ' '.join(body.split('\n'))
-        body = re.sub('(\ |\t)+', ' ', body.strip())
+        if body is None:
+            body = ''
+        else:
+            body_text = '\n'.join(body.findAll(text=True, recursive=False))
+            for child in body.children:
+                if type(child) == element.Tag:
+                    body_text += '\n'.join(child.findAll(text=True, recursive=False)) + '\n'
+            body = ' '.join(body_text.split('\n')[:-1])
+            body = re.sub('(\ |\t)+', ' ', body.strip())
         title = ' '.join(title.split('\n'))
         title = re.sub('(\ |\t)+', ' ', title.strip())
         press = soup.select_one('.press_logo > img')['alt']
@@ -119,6 +126,12 @@ class NewsSpider(scrapy.Spider):
             reporter = re.search('[^가-힣][가-힣]{2,4} 기자[^가-힣]', body)
             if reporter is not None:
                 reporter = reporter[0][1:-4]
+        # 기자 이름 및 언론사 제거 (ex. [서울신문=홍길동 기자])
+        body = re.sub('^\[[^\]]*]|^\([^\)]*\)', '', body).strip()
+        # 기자 이름 제거
+        body = re.sub('([^가-힣]|)[가-힣]{2,4}( |)(인턴|인턴| )( |)기자[^가-힣](= |)', '', body).strip()
+        # 기자 이메일 제거
+        body = re.sub("(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])", '', body).strip()
         pub_date = soup.select_one('div.article_info > span > em').text.strip()
         pub_date = self.korean_date_to_iso8601(pub_date)
         _, (oid, aid) = self.url_checker(response.url)
