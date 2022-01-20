@@ -33,7 +33,7 @@ class YoutubeSpider(scrapy.Spider):
             sys.exit(1)
         elif from_date != '':
             self.date_filter = True
-            self.from_date = datetime.strptime(from_date, '%Y%m%d').replace(hour=23, minute=59, second=59)
+            self.from_date = datetime.strptime(from_date, '%Y%m%d')
             self.to_date = datetime.strptime(to_date, '%Y%m%d').replace(hour=23, minute=59, second=59)
         crawling_mode_list = ['Comment', 'Subcomment']
         if crawling_mode not in crawling_mode_list:
@@ -46,16 +46,17 @@ class YoutubeSpider(scrapy.Spider):
         for id in self.ids :
             query = {
                 'key': YT_APIKEY,
-                'part': 'snippet'
+                'part': 'snippet',
+                'maxResults': 100
             }
             #Channel ID
             if id['type'] == 'channel_id' :
-                query['part'] = 'snippet, statistics'
-                query['id'] = id['id']
+                query['part'] = 'snippet,replies, id'
+                query['allThreadsRelatedToChannelId'] = id['id']
                 query_str = parse.urlencode(query)
                 yield scrapy.Request(
-                        f'{YT_API_LINK}channels?{query_str}', 
-                        self.get_meta_channel,
+                        f'{YT_API_LINK}commentThreads?{query_str}', 
+                        self.parse_video,
                         meta={'type': 'Channel','id': id['id']}
                     )
             #Keyword
@@ -169,7 +170,8 @@ class YoutubeSpider(scrapy.Spider):
             doc = YoutubeCommentItem()
             date = top_comment['snippet']['publishedAt']
             date = datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
-            doc['data_id'] = top_comment['id']
+            doc['data_id']   = top_comment['id']
+            doc['channelId'] = top_comment['snippet']['channelId']
             doc['videoId']   = top_comment['snippet']['videoId']
             doc['body']      = top_comment['snippet']['textOriginal']
             doc['create_dt'] = date + timedelta(hours=9)
