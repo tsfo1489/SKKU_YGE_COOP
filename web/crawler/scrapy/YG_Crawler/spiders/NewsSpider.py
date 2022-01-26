@@ -71,7 +71,7 @@ class NewsSpider(scrapy.Spider):
                     }
                 )
         next_btn = soup.select_one('.btn_next')
-        if next_btn['aria-disabled'] is not None and next_btn['aria-disabled'] == 'false':
+        if next_btn is not None and next_btn['aria-disabled'] is not None and next_btn['aria-disabled'] == 'false':
             query = {
                 'start': response.meta['start'] + 10,
                 'sort': 1,
@@ -79,6 +79,8 @@ class NewsSpider(scrapy.Spider):
             }
             if self.date_filter:
                 query['nso'] = f'p:from{self.from_date}to{self.to_date}'
+                query['ds'] = f'{self.from_date[:4]}.{self.from_date[4:6]}.{self.from_date[6:8]}'
+                query['de'] = f'{self.to_date[:4]}.{self.to_date[4:6]}.{self.to_date[6:8]}'
             query['query'] = f'\"{response.meta["keyword"]}\"'
             query_str = parse.urlencode(query)
             yield scrapy.Request(
@@ -136,6 +138,7 @@ class NewsSpider(scrapy.Spider):
         pub_date = self.korean_date_to_iso8601(pub_date)
         _, (oid, aid) = self.url_checker(response.url)
         item = NewsItem(
+            _id=f'{oid}_{aid}',
             data_id=f'{oid}_{aid}',
             press=press,
             reporter=reporter,

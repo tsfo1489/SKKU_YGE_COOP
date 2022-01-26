@@ -41,6 +41,7 @@ class YoutubeCommentItem(scrapy.Item):
     
 class NewsItem(scrapy.Item):
     target      = 'News'
+    _id         = scrapy.Field()
     data_id     = scrapy.Field()
     press       = scrapy.Field()
     reporter    = scrapy.Field()
