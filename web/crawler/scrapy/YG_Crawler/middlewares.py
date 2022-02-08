@@ -283,9 +283,13 @@ class KeywordSQLMiddleware:
         spider.logger.info(f'Set Connection to Database: Success')
         
         if spider.name == 'News':
-            select_sql_keyword = '''SELECT keyword FROM collect_target_keyword WHERE news_platform=1'''
+            select_sql_keyword = '''SELECT B.keyword 
+                                    FROM collect_target_keyword_group A, collect_target_keyword B
+                                    WHERE news_platform = 1 AND A.id = B.group_id'''
         else:
-            select_sql_keyword = '''SELECT keyword FROM collect_target_keyword WHERE sns_platform=1'''
+            select_sql_keyword = '''SELECT B.keyword 
+                                    FROM collect_target_keyword_group A, collect_target_keyword B
+                                    WHERE sns_platform = 1 AND A.id = B.group_id'''
         cursor.execute(select_sql_keyword)
         rows = cursor.fetchall()
         spider.keywords = [row['keyword'] for row in rows]
