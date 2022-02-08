@@ -14,6 +14,11 @@ NAVER_REACTION_LINK = 'https://news.like.naver.com/v1/search/contents'
 
 class NewsSpider(scrapy.Spider):
     name = 'News'
+    custom_settings = {
+        'SPIDER_MIDDLEWARES': {
+            'YG_Crawler.middlewares.KeywordSQLMiddleware': 800
+        }
+    }
 
     def __init__(self, keywords='', from_date='', to_date='', **kwargs):
         super().__init__(**kwargs)
@@ -138,7 +143,7 @@ class NewsSpider(scrapy.Spider):
         pub_date = self.korean_date_to_iso8601(pub_date)
         _, (oid, aid) = self.url_checker(response.url)
         item = NewsItem(
-            _id=f'{oid}_{aid}',
+            # _id=f'{oid}_{aid}',
             data_id=f'{oid}_{aid}',
             press=press,
             reporter=reporter,

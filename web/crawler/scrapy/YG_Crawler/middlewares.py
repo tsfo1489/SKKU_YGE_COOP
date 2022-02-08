@@ -7,6 +7,7 @@ from os import spawnl
 from scrapy import signals
 import pymysql
 from .apikey import *
+import sshtunnel
 
 class NewsSpiderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
@@ -220,6 +221,75 @@ class TwitterSpiderMiddleware:
                 print(e)
             spider.users=channel_names
             print("spider.users: ", spider.users)    
+        
+    def spider_closed(self, spider):
+        print(spider.name)
+
+
+class KeywordSQLMiddleware:
+    @classmethod
+    def from_crawler(cls, crawler):
+        s = cls()
+        crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
+        return s
+    
+    def process_spider_input(self, response, spider):
+        return None
+
+    def process_spider_output(self, response, result, spider):
+        for i in result:
+            yield i
+
+    def process_spider_exception(self, response, exception, spider):
+        pass
+
+    def process_start_requests(self, start_requests, spider):
+        for r in start_requests:
+            yield r
+            
+    def spider_opened(self, spider):
+        spider.logger.info('Spider opened: %s' % spider.name)
+        
+        spider.logger.info(f'Set Connection to Database: Start')
+        if SSH_ENABLE:
+            self.tunnel = sshtunnel.SSHTunnelForwarder(
+                (SSH_HOST, SSH_PORT),
+                ssh_username=SSH_USER,
+                ssh_password=SSH_PSWD,
+                remote_bind_address=('127.0.0.1', SQL_PORT),
+                local_bind_address=('0.0.0.0', SQL_PORT)
+            )
+            self.tunnel.start()
+            conn = pymysql.connect(
+                user=SQL_USER,
+                passwd=SQL_PW,
+                host='127.0.0.1',
+                port=SQL_PORT,
+                db=SQL_DB
+            )
+        else:
+            conn = pymysql.connect(
+                user=SQL_USER,
+                passwd=SQL_PW,
+                host=SQL_HOST,
+                port=SQL_PORT,
+                db=SQL_DB
+            )
+        
+        try:
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+        except:
+            spider.logger.error(f'Set Connection to Database: Fail')
+        spider.logger.info(f'Set Connection to Database: Success')
+        
+        if spider.name == 'News':
+            select_sql_keyword = '''SELECT keyword FROM collect_target_keyword WHERE news_platform=1'''
+        else:
+            select_sql_keyword = '''SELECT keyword FROM collect_target_keyword WHERE sns_platform=1'''
+        cursor.execute(select_sql_keyword)
+        rows = cursor.fetchall()
+        spider.keywords = [row['keyword'] for row in rows]
+        spider.logger.info(f'Keyword From Database: {spider.keywords}')
         
     def spider_closed(self, spider):
         print(spider.name)
