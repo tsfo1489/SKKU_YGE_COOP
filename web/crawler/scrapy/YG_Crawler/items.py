@@ -47,6 +47,7 @@ class NewsItem(scrapy.Item):
     reporter    = scrapy.Field()
     title       = scrapy.Field()
     body        = scrapy.Field()
+    snippet     = scrapy.Field()
     create_dt   = scrapy.Field()
     url         = scrapy.Field()
     keyword     = scrapy.Field()

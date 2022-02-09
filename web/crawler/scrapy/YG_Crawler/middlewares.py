@@ -251,7 +251,7 @@ class KeywordSQLMiddleware:
         spider.logger.info('Spider opened: %s' % spider.name)
         
         spider.logger.info(f'Set Connection to Database: Start')
-        if SSH_ENABLE:
+        if SSH_MARIA_ENABLE:
             self.tunnel = sshtunnel.SSHTunnelForwarder(
                 (SSH_HOST, SSH_PORT),
                 ssh_username=SSH_USER,

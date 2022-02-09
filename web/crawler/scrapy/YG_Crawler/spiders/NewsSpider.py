@@ -63,16 +63,21 @@ class NewsSpider(scrapy.Spider):
 
     def parse_news_list(self, response):
         soup = bs(response.body, 'html.parser')
-        links = soup.select('div.info_group > a')
-        for link in links:
-            link = link['href']
+        news_items = soup.select('div.news_area')
+        for news in news_items:
+            naver_news_link = news.select_one('div.info_group > a.info:not(.press)')
+            if naver_news_link is None:
+                continue
+            link = naver_news_link['href']
             flag, link = self.url_checker(link)
+            snippet_text = news.select_one('a.dsc_txt_wrap').text
             if flag:
                 yield scrapy.Request(
                     f'{NAVER_NEWS_LINK}?oid={link[0]}&aid={link[1]}',
                     self.parse_news_article,
                     meta={
                         'keyword': response.meta['keyword'],
+                        'snippet': snippet_text
                     }
                 )
         next_btn = soup.select_one('.btn_next')
@@ -149,6 +154,7 @@ class NewsSpider(scrapy.Spider):
             reporter=reporter,
             title=title,
             body=body,
+            snippet=response.meta['snippet'],
             url=response.url,
             keyword=response.meta['keyword'],
             create_dt=pub_date
